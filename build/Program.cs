@@ -32,7 +32,7 @@ public class BuildContext : FrostingContext
         BleedingEdge
     }
 
-    public const string DoorstopVersion = "4.3.0";
+    public const string DoorstopVersion = "4.5.0";
     public const string DotnetRuntimeVersion = "6.0.7";
     public const string DobbyVersion = "1.0.5";
 
@@ -239,10 +239,8 @@ public sealed class MakeDistTask : FrostingTask<BuildContext>
             var bepInExCoreDir = bepInExDir.Combine("core");
             ctx.CreateDirectory(bepInExDir);
             ctx.CreateDirectory(bepInExCoreDir);
-            ctx.CreateDirectory(bepInExDir.Combine("plugins-providers"));
             ctx.CreateDirectory(bepInExDir.Combine("plugins"));
             ctx.CreateDirectory(bepInExDir.Combine("patchers"));
-            ctx.CreateDirectory(bepInExDir.Combine("patchers-providers"));
 
             File.WriteAllText(targetDir.CombineWithFilePath("changelog.txt").FullPath, changelog);
 
@@ -255,8 +253,9 @@ public sealed class MakeDistTask : FrostingTask<BuildContext>
 
             if (dist.Engine == "Unity")
             {
-                var doorstopPath =
-                    ctx.CacheDirectory.Combine("doorstop").Combine($"doorstop_{dist.Os}").Combine(dist.Arch);
+                var doorstopPath = dist.Os == "macos"
+                    ? ctx.CacheDirectory.Combine("doorstop").Combine("doorstop_macos").Combine("universal")
+                    : ctx.CacheDirectory.Combine("doorstop").Combine($"doorstop_{dist.Os}").Combine(dist.Arch);
                 foreach (var filePath in ctx.GetFiles(doorstopPath.Combine($"*.{dist.DllExtension}").FullPath))
                     ctx.CopyFileToDirectory(filePath, targetDir);
                 ctx.CopyFileToDirectory(doorstopPath.CombineWithFilePath(".doorstop_version"), targetDir);

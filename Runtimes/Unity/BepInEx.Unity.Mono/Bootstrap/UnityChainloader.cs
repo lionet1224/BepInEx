@@ -37,17 +37,14 @@ public class UnityChainloader : BaseChainloader<BaseUnityPlugin>
 
     private string _consoleTitle;
 
+    // TODO: Remove once proper instance handling exists
+    public static UnityChainloader Instance { get; set; }
+
     /// <summary>
     ///     The GameObject that all plugins are attached to as components.
     /// </summary>
     public static GameObject ManagerObject { get; private set; }
 
-    public static new UnityChainloader Instance
-    {
-        get => (UnityChainloader)BaseChainloader<BaseUnityPlugin>.Instance;
-        set => BaseChainloader<BaseUnityPlugin>.Instance = value;
-    }
-    
     protected override string ConsoleTitle => _consoleTitle;
 
 
@@ -63,6 +60,26 @@ public class UnityChainloader : BaseChainloader<BaseUnityPlugin>
         get => Application.unityVersion;
     }
 
+    /// <summary>
+    ///     Reads the runtime Unity version, returning null if it is unavailable.
+    ///     Unity's managed code stripper can remove Application.unityVersion entirely, in which case
+    ///     touching it throws MissingMethodException. The version is only used for an informational
+    ///     log line, so it must not be able to abort chainloader initialisation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static string TryGetUnityVersion()
+    {
+        try
+        {
+            return UnityVersion;
+        }
+        catch (Exception e)
+        {
+            Logger.Log(LogLevel.Debug, $"Could not read the runtime Unity version: {e.Message}");
+            return null;
+        }
+    }
+
     [Obsolete("This method is public due to a limitation with Unity 4.x. DO NOT CALL", true)]
     public static void StaticStart(string gameExePath = null)
     {
@@ -73,9 +90,9 @@ public class UnityChainloader : BaseChainloader<BaseUnityPlugin>
 
             Logger.Log(LogLevel.Debug, "Entering chainloader StaticStart");
 
-            Instance = new UnityChainloader();
-            Instance.Initialize(gameExePath);
-            Instance.Execute();
+            var instance = new UnityChainloader();
+            instance.Initialize(gameExePath);
+            instance.Execute();
 
             Logger.Log(LogLevel.Debug, "Exiting chainloader StaticStart");
         }
@@ -119,6 +136,12 @@ public class UnityChainloader : BaseChainloader<BaseUnityPlugin>
         {
             Logger.Log(LogLevel.Fatal, $"Unable to complete chainloader init: {ex.Message}");
             Logger.Log(LogLevel.Fatal, ex.StackTrace);
+
+            // Rethrow so callers do not go on to Execute() a chainloader that was never
+            // initialised. Swallowing here produces a far worse failure mode than crashing:
+            // the loader carries on to log "Chainloader startup complete" while every plugin
+            // silently never runs, which is extremely hard to diagnose.
+            throw;
         }
     }
 
@@ -128,11 +151,16 @@ public class UnityChainloader : BaseChainloader<BaseUnityPlugin>
 
         Logger.Listeners.Add(new UnityLogListener());
 
-        // Update version info from runtime in case it wasn't set yet
-        var prevVersion = UnityInfo.Version;
-        UnityInfo.SetRuntimeUnityVersion(UnityVersion);
-        if (UnityInfo.Version != prevVersion)
-            Logger.Log(LogLevel.Info, $"UnityPlayer version: {UnityInfo.Version}");
+        // Update version info from runtime in case it wasn't set yet.
+        // May be unavailable on aggressively stripped builds; it is informational only.
+        var runtimeUnityVersion = TryGetUnityVersion();
+        if (runtimeUnityVersion != null)
+        {
+            var prevVersion = UnityInfo.Version;
+            UnityInfo.SetRuntimeUnityVersion(runtimeUnityVersion);
+            if (UnityInfo.Version != prevVersion)
+                Logger.Log(LogLevel.Info, $"UnityPlayer version: {UnityInfo.Version}");
+        }
 
         if (!ConfigDiskWriteUnityLog.Value) DiskLogListener.BlacklistedSources.Add("Unity Log");
 

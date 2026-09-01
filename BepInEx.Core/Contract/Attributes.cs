@@ -77,32 +77,6 @@ public class BepInPlugin : Attribute
 }
 
 /// <summary>
-///     This attribute denotes that a class is a plugin provider, and specifies the required metadata.
-/// </summary>
-[AttributeUsage(AttributeTargets.Class)]
-public class BepInPluginProvider : BepInPlugin
-{
-    /// <param name="GUID">The unique identifier of the plugin. Should not change between plugin versions.</param>
-    /// <param name="Name">The user friendly name of the plugin. Is able to be changed between versions.</param>
-    /// <param name="Version">The specific version of the plugin.</param>
-    public BepInPluginProvider(string GUID, string Name, string Version) : base(GUID, Name, Version)
-    {
-    }
-
-    internal new static BepInPluginProvider FromCecilType(TypeDefinition td)
-    {
-        var attr = MetadataHelper.GetCustomAttributes<BepInPluginProvider>(td, false).FirstOrDefault();
-
-        if (attr == null)
-            return null;
-
-        return new BepInPluginProvider((string) attr.ConstructorArguments[0].Value,
-                                       (string) attr.ConstructorArguments[1].Value,
-                                       (string) attr.ConstructorArguments[2].Value);
-    }
-}
-
-/// <summary>
 ///     This attribute specifies any dependencies that this plugin has on other plugins.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
@@ -146,8 +120,18 @@ public class BepInDependency : Attribute, ICacheable
     ///     not load and an error will be logged instead.
     /// </summary>
     /// <param name="guid">The GUID of the referenced plugin.</param>
-    /// <param name="version">The version range of the referenced plugin.</param>
-    /// <remarks>When version is supplied the dependency is always treated as HardDependency</remarks>
+    /// <param name="version">
+    ///     The version requirement of the referenced plugin, parsed as a SemVer range
+    ///     (see <see href="https://github.com/adamreeve/semver.net#ranges" />). A plain version such as
+    ///     <c>1.2.0</c> requires that exact version; use a range such as <c>&gt;=1.2.0</c>, <c>1.2.*</c>,
+    ///     <c>~1.2.0</c> or <c>^1.2.0</c> to accept more than one version.
+    /// </param>
+    /// <remarks>
+    ///     When a version is supplied the dependency is always treated as a hard dependency.
+    ///     Plugins migrating from BepInEx 5 should note a behaviour change: a bare version was previously
+    ///     treated as a minimum (<c>&gt;=</c>), whereas in BepInEx 6 it is an exact match. Use
+    ///     <c>&gt;=1.2.0</c> to keep the old behaviour.
+    /// </remarks>
     public BepInDependency(string guid, string version) : this(guid)
     {
         VersionRange = Range.Parse(version);
@@ -306,28 +290,6 @@ public static class MetadataHelper
     /// <param name="plugin">The plugin instance.</param>
     /// <returns>The BepInPlugin metadata of the plugin instance.</returns>
     public static BepInPlugin GetMetadata(object plugin) => GetMetadata(plugin.GetType());
-
-    /// <summary>
-    ///     Retrieves the BepInPluginProvider metadata from a plugin type.
-    /// </summary>
-    /// <param name="pluginType">The plugin type.</param>
-    /// <returns>The BepInPluginProvider metadata of the plugin type.</returns>
-    public static BepInPlugin GetPluginProviderMetadata(Type pluginType)
-    {
-        var attributes = pluginType.GetCustomAttributes(typeof(BepInPluginProvider), false);
-
-        if (attributes.Length == 0)
-            return null;
-
-        return (BepInPlugin) attributes[0];
-    }
-
-    /// <summary>
-    ///     Retrieves the BepInPluginProvider metadata from a plugin instance.
-    /// </summary>
-    /// <param name="plugin">The plugin instance.</param>
-    /// <returns>The BepInPluginProvider metadata of the plugin instance.</returns>
-    public static BepInPlugin GetPluginProviderMetadata(object plugin) => GetPluginProviderMetadata(plugin.GetType());
 
     /// <summary>
     ///     Gets the specified attributes of a type, if they exist.
